@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="utf-8"?>
+<s:Application xmlns:fx="http://ns.adobe.com/mxml/2009" 
+			   xmlns:s="library://ns.adobe.com/flex/spark" 
+			   xmlns:mx="library://ns.adobe.com/flex/mx" minWidth="955" minHeight="600" creationComplete="initializeInterface(event)">
+	<fx:Script>
+		<![CDATA[
+			import com.fillta.ws.HiggsWebSocket;
+			
+			import flash.external.ExternalInterface;
+			
+			import mx.events.FlexEvent;
+			protected function initializeInterface(event:FlexEvent):void
+			{
+				lbl.text="Hello from the script";
+				try{
+					var client:HiggsWebSocket= new HiggsWebSocket();
+					//provide connect interface
+					ExternalInterface.addCallback("connect",function(host:String,port:int):void{
+						client.connect(host,port);
+					});
+					ExternalInterface.addCallback("send",function(msg:String):void{
+						client.send(msg);
+					});
+					
+					client.onOpen(function():void{
+						ExternalInterface.call("console.log","onopen");
+						ExternalInterface.call("higgs.onopen");
+					});
+					client.onClose(function():void{
+						ExternalInterface.call("console.log","onclose");
+						ExternalInterface.call("higgs.onclose");
+					});
+					client.onError(function():void{
+						ExternalInterface.call("console.log","onerror");
+						ExternalInterface.call("higgs.onerror");
+					});
+					client.onMessage(function(msg:String):void{
+						ExternalInterface.call("console.log","onmessage",msg);
+						ExternalInterface.call("higgs.onmessage",msg);
+					});
+					//random
+					ExternalInterface.call("console.log",Math.random());
+					lbl.text="Hello 2 from the script";
+				}catch(e:Error){
+					lbl.text=e.name +" "+ e.message;
+				}
+			}  
+			
+			public function myFunc(s:String):void {
+				lbl.text = s;
+			}
+			
+		]]>
+	</fx:Script>
+	<fx:Declarations>
+		<!-- Place non-visual elements (e.g., services, value objects) here -->
+	</fx:Declarations>
+	<s:Label id="lbl" x="217" y="120" fontSize="36" text="Hello World"/>
+</s:Application>
