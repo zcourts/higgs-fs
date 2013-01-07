@@ -53,6 +53,7 @@
             /*  default NOOP API function*/
         }
         higgs_fs.instance = {}
+        higgs_fs.listeners = {}
         //default no op callbacks invoked on events
         higgs_fs.onopen = function (e) {
             console.log("opened", e)
@@ -64,7 +65,6 @@
             console.log("error", e)
         }
         higgs_fs.onmessage = function (e) {
-            console.log("message", e)
         }
         higgs_fs.send = higgs_fs.instance.send = function (data) {
             console.error("send:no usable instance configured", data)
@@ -96,8 +96,27 @@
         /**
          * called by the flash or web socket when a message is received
          */
-        higgs_fs.onmessage_fs = function (data) {
-            higgs_fs.onmessage(data)
+        higgs_fs.onmessage_fs = function (d) {
+            var data = d
+            if (d instanceof MessageEvent) {
+                //only interested in the data
+                data = d.data
+            }
+            if (typeof data == 'string' || data instanceof String) {
+                data = JSON.parse(data)
+            }
+            var listener = higgs_fs.listeners[data.callback]
+            if (listener) {
+                if (listener.callback && typeof listener.callback == 'function') {
+                    listener.callback(data.message)
+                }
+                if (listener.unsubscribe) {
+                    delete higgs_fs.listeners[data.callback];
+                }
+            }
+            if (higgs_fs.onmessage) {
+                higgs_fs.onmessage(data)
+            }
         }
 
         // initializes a synthetic API that mimics the native WebSocket API.
@@ -266,12 +285,28 @@
                 return higgs_fs.instance.close();
             }
         }
-        higgs_fs.invoke = function (method, data) {
+        /**
+         * Invokes a web socket endpoint on a Higgs Server.
+         * @param method  the name of the end point to invoke
+         * @param data   the data to pass to the end point
+         * @param callback  a function where, if provided is invoked with any response the server sends
+         * @param unsubscribe if true then when a response is received the callback is un-subscribed
+         * and any further replies the server sends will not invoke the callback
+         */
+        higgs_fs.invoke = function (method, data, callback, unsubscribe) {
+            var callback_id = new Date().getTime();
+            if (callback) {
+                higgs_fs.listeners[callback_id] =
+                {
+                    unsubscribe:unsubscribe,
+                    callback:callback
+                }
+            }
             var json = JSON.stringify({
                 topic:method,
-                message:data ? data : {}
+                message:data ? data : {},
+                callback:callback_id
             })
-            console.log(json)
             higgs_fs.send(json)
         }
     })
