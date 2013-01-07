@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mx:Application xmlns:fx="http://ns.adobe.com/mxml/2009" 
+				xmlns:s="library://ns.adobe.com/flex/spark" 
+				xmlns:mx="library://ns.adobe.com/flex/mx" minWidth="955" minHeight="600" creationComplete="initializeInterface(event)">
+	<fx:Script> 
+		<![CDATA[
+			import com.fillta.ws.HiggsWebSocket;
+			
+			import flash.external.ExternalInterface;
+			
+			import mx.core.FlexGlobals;
+			import mx.events.FlexEvent;
+			
+			private var client:HiggsWebSocket;
+			protected function initializeInterface(event:FlexEvent):void
+			{
+				info("Initializing Higgs Flash Socket");
+				try{
+					var encoding:String=FlexGlobals.topLevelApplication.parameters.encoding;
+					var logToConsole:Boolean=FlexGlobals.topLevelApplication.parameters.logToConsole;
+					
+					client= new HiggsWebSocket(info,error,encoding);
+					//provide connect interface
+					ExternalInterface.addCallback("connect",function(host:String,port:int):void{
+						client.connect(host,port);
+					});
+					//provide send interface
+					ExternalInterface.addCallback("send",function(msg:String):Boolean{
+						return client.send(msg); 
+					});
+					//provide close interface
+					ExternalInterface.addCallback("close",function():void{
+						client.close();
+					});
+					client.onOpen(function():void{
+						ExternalInterface.call("higgs_fs.onopen_fs");
+					});
+					client.onClose(function():void{
+						ExternalInterface.call("higgs_fs.onclose_fs");
+					});
+					client.onError(function():void{
+						ExternalInterface.call("higgs_fs.onerror_fs");
+					});
+					client.onMessage(function(msg:String):void{
+						ExternalInterface.call("higgs_fs.onmessage_fs",msg);
+					});
+				}catch(e:Error){
+					error(e.name +" "+ e.message);
+				}
+				
+				function info(... content):void{
+					logger.htmlText=logger.htmlText+"<br /><span style=\"color:black;\">"+content+"</span>";
+					if(logToConsole){
+						ExternalInterface.call("console.log",content);
+					}
+				}
+				
+				function error(... content):void{
+					logger.htmlText=logger.htmlText+"<br /><span style=\"color:red;\">"+content+"</span>";
+					if(logToConsole){
+						ExternalInterface.call("console.error",content);
+					}
+				}
+			}
+			
+		]]>
+	</fx:Script>
+	<fx:Declarations>
+		<!-- Place non-visual elements (e.g., services, value objects) here -->
+	</fx:Declarations>
+	<mx:TextArea width="100%" height="100%" id="logger"/>
+</mx:Application>

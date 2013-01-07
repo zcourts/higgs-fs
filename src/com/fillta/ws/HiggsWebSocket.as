@@ -4,7 +4,6 @@ package com.fillta.ws
 	import flash.events.IOErrorEvent;
 	import flash.events.ProgressEvent;
 	import flash.events.SecurityErrorEvent;
-	import flash.external.ExternalInterface;
 	import flash.net.Socket;
 	import flash.utils.ByteArray;
 	
@@ -15,19 +14,28 @@ package com.fillta.ws
 		private var errorListener:Function;
 		private var messageListener:Function;
 		private var closeListener:Function;
+		private var encoding:String="utf-8";
+		private var error:Function;
+		private var info:Function;
+		private var buf:ByteArray=new ByteArray();
+
+		public function HiggsWebSocket( info:Function,error:Function, encoding:String)
+		{
+			this.info=info;
+			this.error=error;
+			this.encoding=encoding;
+		}
 		
-		public function HiggsWebSocket()
-		{
-		}
-		public function log(... args):void
-		{
-			ExternalInterface.call("console.log",args);
-		}
-		public function connect(host:String,port:int):void
+		public function close():void
 		{
 			if(socket!=null && socket.connected){
 				socket.close();
 			}
+		}
+		
+		public function connect(host:String,port:int):void
+		{
+			close();
 			socket=new Socket();
 			socket.addEventListener(Event.CONNECT,onOpen);
 			socket.addEventListener(IOErrorEvent.IO_ERROR,onError);
@@ -35,17 +43,16 @@ package com.fillta.ws
 			socket.addEventListener(Event.CLOSE,onClose);
 			socket.addEventListener(ProgressEvent.SOCKET_DATA,onMessage);
 			try{
-				log("connecting to ",host,":",port);
+				info("connecting to ",host,":",port);
 				socket.connect(host,port);
-				log("connect returned");
 			}catch(e:Error){
-				log("unable to connect",e.name,e.errorID,e.message);
+				error("unable to connect",e.name,e.errorID,e.message);
 			}
 		}
 		
 		protected function securityErrorHandler(event:SecurityErrorEvent):void
 		{
-			ExternalInterface.call("console.error",event.type,event.errorID,event.text);
+			error("console.error",event.type,event.errorID,event.text);
 		}
 		
 		public function onOpen(arg:*):void
@@ -58,7 +65,7 @@ package com.fillta.ws
 				}
 				else if(arg is Event && connectListener!=null)
 				{
-					log("onopen");
+					info("onopen");
 					connectListener.apply();	
 				}
 			}
@@ -99,25 +106,34 @@ package com.fillta.ws
 				{
 					messageListener=arg;		
 				}else if(arg is ProgressEvent && messageListener!=null){
-					while(socket.bytesAvailable>0){
-						//do we have the 7 byte header?
-						if(socket.bytesAvailable<7){
-							break;
+					socket.readBytes(buf,buf.bytesAvailable,socket.bytesAvailable);
+					//as long as we have some data try to read it
+					while(buf.bytesAvailable>0)
+					{
+						//must have at least 4 bytes to know the size of the message
+						if(buf.bytesAvailable<4){
+							return;
 						}
-						//first 3 bytes are the characters HFS 
-						//(we don't care on the client side, they're used to detect the protocol on the server)
-						socket.readByte();
-						socket.readByte();
-						socket.readByte();
-						//next 4 bytes tells us the message size
-						var size:int=socket.readInt();
-						//we don't have the entire message yet
-						if(socket.bytesAvailable<size){
-							break;
+						//capture the current position in case there isn't enough data for a whole message
+						var index:int=buf.position;
+						//get the message size (first  4 bytes of the data)
+						var size:int=buf.readInt();
+						if(buf.bytesAvailable<size)
+						{
+							//reset position if we don't have enough
+							buf.position=index;
+							return;
 						}
-						var message:String=socket.readUTFBytes(size);
-						messageListener.call(this,message);
-						//loop round and continue reading messages until the socket is empty
+						//we have enough so read the data out
+						var msg:String=buf.readUTFBytes(size);
+						//copy what's left in the buffer to a temp byte array, clear the byte array we just read from (to free memory)
+						//otherwise the buf will just keep growing. then re-assign old buf to what was copied
+						var tmp:ByteArray=new ByteArray();
+						buf.readBytes(tmp);
+						buf.clear();
+						buf=tmp;
+						//finally, emit the message we got
+						messageListener.call(this,msg);
 					}
 				}
 			}
@@ -131,6 +147,7 @@ package com.fillta.ws
 				{
 					closeListener=arg;		
 				}else if(arg is Event && closeListener!=null){
+					info("onclose");
 					closeListener.apply();
 				}
 			}
@@ -145,7 +162,7 @@ package com.fillta.ws
 					errorListener=arg;		
 				}else if(arg is IOErrorEvent && errorListener!=null){
 					var error:IOErrorEvent=arg;
-					log("error",error.errorID,error.text);
+					info("onerror",error.errorID,error.text);
 					errorListener.apply();
 				}
 			}
